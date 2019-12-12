@@ -14,7 +14,7 @@ class HP:
     def __init__(self, env_name='Hopper-v2', total_episodes=1000, action_bound=1,
                  episode_length=1000, learning_rate=0.02, weight=0.01, learning_steps=100,
                  num_samples=8, noise=0.02, bc_index=[], std_dev=0.03, syn_step=10,
-                 meta_population_size=5, seed=1, hidden_size=300):
+                 meta_population_size=5, seed=1, hidden_size=300, coefficient=1):
         self.env = gym.make(env_name)
         np.random.seed(seed)
         self.env.seed(seed)
@@ -29,6 +29,7 @@ class HP:
         self.meta_population_size = meta_population_size
         self.seed = seed
         self.syn_step = syn_step
+        self.coefficient = coefficient
         self.learning_steps = learning_steps
         self.bc_index = bc_index
         self.weight = weight
@@ -36,7 +37,7 @@ class HP:
         self.hidden_size = hidden_size
         self.stddev = std_dev
         self.intrinsic_network = IntrinsicNetwork(state_dim=self.input_size, action_dim=self.output_size,
-                                                  seed=self.seed, namescope=str(seed))
+                                                  seed=self.seed, namescope=str(seed), weight=self.weight)
         self.replay = utils.ReplayBuffer()
 
 
@@ -142,8 +143,10 @@ class Policy:
                                 self.hp.normalizer.normalize(next_obs),
                                 action, reward, done))
             if with_bonus:
-                bonus += self.hp.intrinsic_network.get_bonus(self.hp.normalizer.normalize(obs), action,
-                                                             self.hp.normalizer.normalize(next_obs))
+                bonus += self.hp.coefficient * self.hp.intrinsic_network.get_bonus(self.hp.normalizer.normalize(obs),
+                                                                                   action,
+                                                                                   self.hp.normalizer.normalize(
+                                                                                       next_obs))
                 # print(bonus)
             obs = next_obs
             total_reward += reward
@@ -178,14 +181,6 @@ class Policy:
     def sample_deltas(self):
         return [np.random.randn(*self.w1.shape) * self.hp.noise,
                 np.random.randn(*self.b1.shape) * self.hp.noise]
-
-    def td3_soft_update(self, params):
-        self.w1 = self.w1 * (1 - self.hp.weight) + self.hp.weight * params[0]
-        self.b1 = self.b1 * (1 - self.hp.weight) + self.hp.weight * params[1]
-
-    def td3_update(self, params):
-        self.w1 = params[0]
-        self.b1 = params[1]
 
 
 class IntrinsicARS:
@@ -223,7 +218,7 @@ class IntrinsicARS:
                 self.hp.replay.flush()
             sigma_rewards = np.std(np.array(forward_reward_list + backward_reward_list))
             policy.adam_update(rollouts, sigma_rewards)
-            #policy.update(rollouts,sigma_rewards)
+            # policy.update(rollouts,sigma_rewards)
             test_reward, _ = policy.evaluate()
             total_step.append(current_step)
             print('#######')
