@@ -13,7 +13,7 @@ class HP:
     # hyper parameters
     def __init__(self, env_name='Hopper-v2', total_episodes=1000, action_bound=1,
                  episode_length=1000, learning_rate=0.02, weight=0.01, learning_steps=100,
-                 num_samples=8, noise=0.02, bc_index=[], std_dev=0.03, syn_step=10,
+                 num_samples=8, noise=0.02, bc_index=[], std_dev=0.03, syn_step=10, num_best=4,
                  meta_population_size=5, seed=1, hidden_size=300, coefficient=1):
         self.env = gym.make(env_name)
         np.random.seed(seed)
@@ -24,6 +24,7 @@ class HP:
         self.total_episodes = total_episodes
         self.episode_length = episode_length
         self.lr = learning_rate
+        self.num_best = num_best
         self.num_samples = num_samples
         self.noise = noise
         self.meta_population_size = meta_population_size
@@ -212,11 +213,15 @@ class IntrinsicARS:
             for j in range(int(self.hp.replay.get_length() / 100)):
                 state, next_state, action, _2, _3 = self.hp.replay.sample()
                 self.hp.intrinsic_network.learn(state, action, next_state)
-            rollouts = [((forward_reward_list[j] - backward_reward_list[j]),
-                         deltas[j]) for j in range(self.hp.num_samples)]
+            # rollouts = [((forward_reward_list[j] - backward_reward_list[j]),
+            #             deltas[j]) for j in range(self.hp.num_samples)]
             if t > 10:
                 self.hp.replay.flush()
             sigma_rewards = np.std(np.array(forward_reward_list + backward_reward_list))
+            scores = {k: max(r1, r2) for k, (r1, r2) in enumerate(zip(forward_reward_list, backward_reward_list))}
+            order = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)[:self.hp.num_best]
+            rollouts = [((forward_reward_list[j] - backward_reward_list[j]),
+                         deltas[j]) for j in order]
             policy.adam_update(rollouts, sigma_rewards)
             # policy.update(rollouts,sigma_rewards)
             test_reward, _ = policy.evaluate()
